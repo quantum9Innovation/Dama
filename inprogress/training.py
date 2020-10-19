@@ -1,5 +1,6 @@
 
 import copy
+import tensorflow as tf
 import keras as kr
 import numpy as np
 from pythonchess import chess
@@ -15,7 +16,7 @@ pressure_in = kr.Input(shape=(64,))  # square-centric view; square pressure
 
 # PREPROCESSING
 
-board = kr.layers.Embedding(16, 4, input_length=68)(board_in)
+board = kr.layers.Embedding(20, 4, input_length=68)(board_in)
 board = kr.layers.Flatten()(board)
 """
 The `piece` array should already be preprocessed to avoid any complications with 
@@ -44,7 +45,11 @@ out = kr.layers.Dense(3, activation='softmax')(out)
 Output sequence should be as follows:
     NEURON 1: Side with last move win probability
     NEURON 2: Draw probability
-    NEURON 3: Side with last move lose probability
+    NEURON 3: Side with last move lose probability --(1)
+    
+    (1) Return this value to the `minimax` algorithm
+        Once a move is played on the board the nn will give p_win to the side whose turn it is to play
+        Instead return that side's loss probability = desired minimax win probability
 """
 Model = kr.Model(inputs=[board_in, piece_in, mobility_in, pressure_in], outputs=out, name='dama')
 opt_adadelta = kr.optimizers.Adadelta(rho=0.9)
@@ -52,59 +57,14 @@ Model.compile(loss='categorical_crossentropy', optimizer=opt_adadelta)
 Model.summary()
 
 
-# TODO: Format input `x` correctly before giving as input to nn
-def evaluate(x):
+def model_eval(data):
+    """Returns losing probability (see #KERAS_MODEL for more information"""
 
-    turn = x[-1]
-    w_score = 0
-    b_score = 0
-
-    for i in range(0, len(x) - 1):
-
-        if x[i] == 1:
-            w_score+=1
-
-        if x[i] == 2:
-            b_score+=1
-
-        if x[i] == 3:
-            w_score+=5
-
-        if x[i] == 4:
-            b_score+=5
-
-        if x[i] == 5:
-            w_score += 2.5
-
-        if x[i] == 6:
-            b_score += 2.5
-
-        if x[i] == 7:
-            w_score += 3.5
-
-        if x[i] == 8:
-            b_score += 3.5
-
-        if x[i] == 9:
-            w_score += 0
-
-        if x[i] == 10:
-            b_score += 0
-
-        if x[i] == 11:
-            w_score += 9
-
-        if x[i] == 12:
-            b_score += 9
-
-    if turn == 13:
-        return 1 / (1 + np.exp((b_score - w_score) * 0.4))
-    else:
-        return 1 / (1 + np.exp((w_score - b_score) * 0.4))
+    print(data)
+    return Model.predict_on_batch([data])
 
 
-# TODO: Use `evaluate(board)` to get model predictions
-def model_out(board):
+def formatter(board):
 
     raw_fen = board.fen().split(' ')
     fen = raw_fen[0].split('/')
@@ -112,20 +72,20 @@ def model_out(board):
     turn = raw_fen[1]
     castling_info = list(raw_fen[2])
 
-    castle_k = False
-    castle_K = False
-    castle_q = False
-    castle_Q = False
+    castle_k = 13
+    castle_K = 14
+    castle_q = 15
+    castle_Q = 16
 
     for char in castling_info:
         if char == 'k':
-            castle_k = True
+            castle_k = 17
         if char == 'K':
-            castle_K = True
+            castle_K = 18
         if char == 'q':
-            castle_q = True
+            castle_q = 19
         if char == 'Q':
-            castle_Q = True
+            castle_Q = 20
 
     net_input = []
     piece_mobility = [0] * 64
@@ -172,49 +132,93 @@ def model_out(board):
         line_bonus = 0
         for char in range(0, len(fen_string)):
 
-            if fen_string[char] == 'P':
-                net_input.append(1)
-                wpco.append([char + line_bonus, line])
-            elif fen_string[char] == 'p':
-                net_input.append(2)
-                bpco.append([char + line_bonus, line])
-            elif fen_string[char] == 'R':
-                net_input.append(3)
-                wrco.append([char + line_bonus, line])
-            elif fen_string[char] == 'r':
-                net_input.append(4)
-                brco.append([char + line_bonus, line])
-            elif fen_string[char] == 'N':
-                net_input.append(5)
-                wnco.append([char + line_bonus, line])
-            elif fen_string[char] == 'n':
-                net_input.append(6)
-                bnco.append([char + line_bonus, line])
-            elif fen_string[char] == 'B':
-                net_input.append(7)
-                wbco.append([char + line_bonus, line])
-            elif fen_string[char] == 'b':
-                net_input.append(8)
-                bbco.append([char + line_bonus, line])
-            elif fen_string[char] == 'K':
-                net_input.append(9)
-                wkco.append([char + line_bonus, line])
-            elif fen_string[char] == 'k':
-                net_input.append(10)
-                bkco.append([char + line_bonus, line])
-            elif fen_string[char] == 'Q':
-                net_input.append(11)
-                wqco.append([char + line_bonus, line])
-            elif fen_string[char] == 'q':
-                net_input.append(12)
-                bqco.append([char + line_bonus, line])
-            else:
-                num_squares = int(fen_string[char])
-                line_bonus += num_squares - 1
-                for i in range(num_squares):
-                    net_input.append(0)
+            if turn == 'w':
 
-    net_input = np.array(net_input)
+                if fen_string[char] == 'P':
+                    net_input.append(1)
+                    wpco.append([char + line_bonus, line])
+                elif fen_string[char] == 'p':
+                    net_input.append(2)
+                    bpco.append([char + line_bonus, line])
+                elif fen_string[char] == 'R':
+                    net_input.append(3)
+                    wrco.append([char + line_bonus, line])
+                elif fen_string[char] == 'r':
+                    net_input.append(4)
+                    brco.append([char + line_bonus, line])
+                elif fen_string[char] == 'N':
+                    net_input.append(5)
+                    wnco.append([char + line_bonus, line])
+                elif fen_string[char] == 'n':
+                    net_input.append(6)
+                    bnco.append([char + line_bonus, line])
+                elif fen_string[char] == 'B':
+                    net_input.append(7)
+                    wbco.append([char + line_bonus, line])
+                elif fen_string[char] == 'b':
+                    net_input.append(8)
+                    bbco.append([char + line_bonus, line])
+                elif fen_string[char] == 'K':
+                    net_input.append(9)
+                    wkco.append([char + line_bonus, line])
+                elif fen_string[char] == 'k':
+                    net_input.append(10)
+                    bkco.append([char + line_bonus, line])
+                elif fen_string[char] == 'Q':
+                    net_input.append(11)
+                    wqco.append([char + line_bonus, line])
+                elif fen_string[char] == 'q':
+                    net_input.append(12)
+                    bqco.append([char + line_bonus, line])
+                else:
+                    num_squares = int(fen_string[char])
+                    line_bonus += num_squares - 1
+                    for i in range(num_squares):
+                        net_input.append(0)
+
+            else:
+
+                if fen_string[char] == 'p':
+                    net_input.append(1)
+                    wpco.append([char + line_bonus, line])
+                elif fen_string[char] == 'P':
+                    net_input.append(2)
+                    bpco.append([char + line_bonus, line])
+                elif fen_string[char] == 'r':
+                    net_input.append(3)
+                    wrco.append([char + line_bonus, line])
+                elif fen_string[char] == 'R':
+                    net_input.append(4)
+                    brco.append([char + line_bonus, line])
+                elif fen_string[char] == 'n':
+                    net_input.append(5)
+                    wnco.append([char + line_bonus, line])
+                elif fen_string[char] == 'N':
+                    net_input.append(6)
+                    bnco.append([char + line_bonus, line])
+                elif fen_string[char] == 'b':
+                    net_input.append(7)
+                    wbco.append([char + line_bonus, line])
+                elif fen_string[char] == 'B':
+                    net_input.append(8)
+                    bbco.append([char + line_bonus, line])
+                elif fen_string[char] == 'k':
+                    net_input.append(9)
+                    wkco.append([char + line_bonus, line])
+                elif fen_string[char] == 'K':
+                    net_input.append(10)
+                    bkco.append([char + line_bonus, line])
+                elif fen_string[char] == 'q':
+                    net_input.append(11)
+                    wqco.append([char + line_bonus, line])
+                elif fen_string[char] == 'Q':
+                    net_input.append(12)
+                    bqco.append([char + line_bonus, line])
+                else:
+                    num_squares = int(fen_string[char])
+                    line_bonus += num_squares - 1
+                    for i in range(num_squares):
+                        net_input.append(0)
 
     while len(wpco) < 8:
         wpco.append([])
@@ -234,16 +238,27 @@ def model_out(board):
         bbco.append([])
 
     piece_map = [wpco, bpco, wrco, brco, wnco, bnco, wbco, bbco, wkco, bkco, wqco, bqco]
+    if turn == 'b':
+        piece_map = [bpco, wpco, brco, wrco, bnco, wnco, bbco, wbco, bkco, wkco, bqco, wqco]
 
-    return [turn, [castle_K, castle_k, castle_Q, castle_q], net_input.reshape((8, 8)), piece_map,
-            piece_mobility.reshape((8, 8)), piece_threats.reshape((8, 8))]
+    castling_rights = [castle_K, castle_k, castle_Q, castle_q]
+    if turn == 'b':
+        castling_rights = [castle_k, castle_K, castle_q, castle_Q]
 
+    net_input.append(castling_rights[0])
+    net_input.append(castling_rights[1])
+    net_input.append(castling_rights[2])
+    net_input.append(castling_rights[3])
+
+    net_input = np.array(net_input)
+
+    return model_eval([net_input, piece_map, piece_mobility, piece_threats])
 
 """
 REMOVED UNTIL NEURAL NETWORK IS FULLY CONFIGURED
 """
-# print('\nStarting Game Analysis: ')
-# print(model_out(False, chess.Board()))
+print('\nStarting Game Analysis: ')
+print(formatter(chess.Board()))
 
 board = chess.Board()
 rounds = [5, 5]
@@ -273,7 +288,7 @@ def minimax_tree_search(board, depth):
             turn = True
         else:
             turn = False
-        return board, model_out(turn, board)
+        return board, formatter(board)
 
     scores = []
 
@@ -287,7 +302,7 @@ def minimax_tree_search(board, depth):
             turn = True
         else:
             turn = False
-        scores.append((new_boards[-1], model_out(turn, new_boards[-1])))
+        scores.append((new_boards[-1], formatter(new_boards[-1])))
 
     sum = 0
     for el in scores:
