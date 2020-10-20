@@ -1,3 +1,8 @@
+"""
+THIS IS A MODIFIED VERSION OF THE `training.py` FILE.
+THIS VERSION INCLUDES 4 DIFFERENT VIEWS OF THE CHESS BOARD WHICH ARE FED INTO THE NN.
+STATUS: "IN DEVELOPMENT"
+"""
 
 import copy
 import tensorflow as tf
@@ -6,6 +11,9 @@ import numpy as np
 from pythonchess import chess
 from copy import deepcopy
 
+# TODO: Get the dataset ready
+# TODO: Write basic training algorithm
+# TODO: Advanced training & next steps ...
 
 # INPUTS
 
@@ -16,8 +24,14 @@ pressure_in = kr.Input(shape=(64,))  # square-centric view; square pressure
 
 # PREPROCESSING
 
-board = kr.layers.Embedding(20, 4, input_length=68)(board_in)
-board = kr.layers.Flatten()(board)
+"""
+VOCABULARY SIZE = 2 players * (6 pieces + 4 castling possibilities) + blank squares
+                = 2 * 10 + 1
+                = 21 (final vocabulary size)
+"""
+
+board = kr.layers.Embedding(21, 4, input_length=68)(board_in)
+board_1 = kr.layers.Flatten()(board)
 """
 The `piece` array should already be preprocessed to avoid any complications with 
 nonexistent pieces
@@ -25,8 +39,8 @@ nonexistent pieces
 
 # SUB-NETWORKS
 
-board = kr.layers.Dense(64, activation='softplus')(board)
-board = kr.layers.Dense(8, activation='softplus')(board)
+board_2 = kr.layers.Dense(64, activation='softplus')(board_1)
+board_3 = kr.layers.Dense(8, activation='softplus')(board_2)
 
 piece = kr.layers.Dense(8, activation='softplus')(piece_in)
 mobility = kr.layers.Dense(8, activation='softplus')(mobility_in)
@@ -34,10 +48,10 @@ pressure = kr.layers.Dense(8, activation='softplus')(pressure_in)
 
 # CONCATENATION
 
-out = kr.layers.Concatenate()([board, piece, mobility, pressure])
-out = kr.layers.Dense(32, activation='softplus')(out)
-out = kr.layers.Dense(8, activation='softplus')(out)
-out = kr.layers.Dense(3, activation='softmax')(out)
+out = kr.layers.Concatenate()([board_3, piece, mobility, pressure])
+out_1 = kr.layers.Dense(32, activation='softplus')(out)
+out_2 = kr.layers.Dense(8, activation='softplus')(out_1)
+out_3 = kr.layers.Dense(3, activation='softmax')(out_2)
 
 # KERAS MODEL
 
@@ -51,7 +65,7 @@ Output sequence should be as follows:
         Once a move is played on the board the nn will give p_win to the side whose turn it is to play
         Instead return that side's loss probability = desired minimax win probability
 """
-Model = kr.Model(inputs=[board_in, piece_in, mobility_in, pressure_in], outputs=out, name='dama')
+Model = kr.Model(inputs=[board_in, piece_in, mobility_in, pressure_in], outputs=out_3, name='dama')
 opt_adadelta = kr.optimizers.Adadelta(rho=0.9)
 Model.compile(loss='categorical_crossentropy', optimizer=opt_adadelta)
 Model.summary()
@@ -60,8 +74,26 @@ Model.summary()
 def model_eval(data):
     """Returns losing probability (see #KERAS_MODEL for more information"""
 
-    print(data)
-    return Model.predict_on_batch([data])
+    inp1 = np.array(data[0])
+
+    # flatten input #2 (pieces list)
+    inp2 = []
+    for stack in data[1]:
+        for el in stack:
+            inp2.append(el[0])
+            inp2.append(el[1])
+
+    inp2 = np.array(inp2)
+
+    inp3 = np.array(data[2])
+    inp4 = np.array(data[3])
+
+    inp1 = inp1.reshape((1, 68))
+    inp2 = inp2.reshape((1, 64))
+    inp3 = inp3.reshape((1, 64))
+    inp4 = inp4.reshape((1, 64))
+
+    return float(Model([inp1, inp2, inp3, inp4])[0][2])
 
 
 def formatter(board):
@@ -221,21 +253,21 @@ def formatter(board):
                         net_input.append(0)
 
     while len(wpco) < 8:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(bpco) < 8:
-        bpco.append([])
+        bpco.append([16, 16])
     while len(wrco) < 2:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(brco) < 2:
-        brco.append([])
+        brco.append([16, 16])
     while len(wnco) < 2:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(bnco) < 2:
-        bnco.append([])
+        bnco.append([16, 16])
     while len(wbco) < 2:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(bbco) < 2:
-        bbco.append([])
+        bbco.append([16, 16])
 
     piece_map = [wpco, bpco, wrco, brco, wnco, bnco, wbco, bbco, wkco, bkco, wqco, bqco]
     if turn == 'b':
@@ -254,9 +286,7 @@ def formatter(board):
 
     return model_eval([net_input, piece_map, piece_mobility, piece_threats])
 
-"""
-REMOVED UNTIL NEURAL NETWORK IS FULLY CONFIGURED
-"""
+
 print('\nStarting Game Analysis: ')
 print(formatter(chess.Board()))
 
@@ -359,7 +389,5 @@ def start_self_play():
         print(game_history[-1])
 
 
-"""
-REMOVED UNTIL NEURAL NETWORK IS FULLY CONFIGURED
-"""
-# start_self_play()
+# TODO: Fix unnecessary memory usage and crashing (usually ~move #5-7)
+start_self_play()
