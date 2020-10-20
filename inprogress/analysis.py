@@ -160,21 +160,21 @@ def formatter(board):
                         net_input.append(0)
 
     while len(wpco) < 8:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(bpco) < 8:
-        bpco.append([])
+        bpco.append([16, 16])
     while len(wrco) < 2:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(brco) < 2:
-        brco.append([])
+        brco.append([16, 16])
     while len(wnco) < 2:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(bnco) < 2:
-        bnco.append([])
+        bnco.append([16, 16])
     while len(wbco) < 2:
-        wpco.append([])
+        wpco.append([16, 16])
     while len(bbco) < 2:
-        bbco.append([])
+        bbco.append([16, 16])
 
     piece_map = [wpco, bpco, wrco, brco, wnco, bnco, wbco, bbco, wkco, bkco, wqco, bqco]
     if turn == 'b':
@@ -192,8 +192,3 @@ def formatter(board):
     net_input = np.array(net_input)
 
     return [net_input, piece_map, piece_mobility, piece_threats]
-
-
-board = chess.Board(fen='r2qk2r/pppb1ppp/2nbpn2/3pN3/3P1P2/1P1BPR2/PBPN2PP/R2Q2K1 b kq - 0 1')
-print(board)
-print(formatter(board))
